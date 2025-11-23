@@ -14,105 +14,111 @@ st.set_page_config(
 
 st.title("🍦 냉동 디저트 생산량 분석 (1972-2019)")
 
-# --- 1. 데이터 로드 (Data Loading) ---
-
-# 파일 경로: pages 폴더 내의 스크립트에서 상위 폴더에 있는 CSV 파일을 참조
+# --- 1. 데이터 로드 (Data Loading) - 경로 문제 해결 ---
 @st.cache_data
-def load_data(file_path):
+def load_data():
+    file_name = 'Frozen_Dessert_Production.csv'
+    data = None
+    
+    # 1차 시도: 앱의 루트 폴더에서 파일 이름으로 직접 접근 (Streamlit Cloud에서 가장 안정적)
     try:
-        # '..' 을 사용하여 상위 폴더 접근
-        df = pd.read_csv(file_path)
-        return df
+        data = pd.read_csv(file_name)
+        st.success("✅ 파일이 앱의 루트 폴더에서 성공적으로 로드되었습니다.")
+        return data
     except FileNotFoundError:
-        st.error(f"오류: 파일을 찾을 수 없습니다. 경로를 확인해주세요: {file_path}")
-        return None
+        pass # 1차 시도 실패, 2차 시도 진행
 
-# 현재 스크립트의 경로를 기반으로 상위 폴더의 CSV 파일 경로 설정
-csv_file_path = os.path.join(os.path.dirname(__file__), '..', 'Frozen_Dessert_Production.csv')
-data = load_data(csv_file_path)
+    # 2차 시도: pages 폴더 내부에서 상위 폴더(..)로 접근 (사용자님의 원래 구조)
+    try:
+        # 현재 스크립트 경로에서 상위 폴더로 이동하여 CSV 파일 경로 설정
+        relative_path = os.path.join(os.path.dirname(__file__), '..', file_name)
+        data = pd.read_csv(relative_path)
+        st.success("✅ 파일이 'pages' 폴더 상위 경로에서 성공적으로 로드되었습니다.")
+        return data
+    except FileNotFoundError:
+        # 두 번 모두 실패했을 경우 오류 메시지 출력 후 앱 중단
+        st.error("⚠️ **데이터 파일(Frozen_Dessert_Production.csv)을 찾을 수 없습니다!**")
+        st.error("파일 경로를 확인해주세요. 예상되는 파일 위치는 다음과 같습니다.")
+        st.markdown(
+            """
+            ```
+            frozen_dessert_app/ (앱의 루트)
+            ├── Frozen_Dessert_Production.csv  <-- 이 위치에 파일이 있어야 합니다!
+            ├── pages/
+            │   └── 1_Dessert_Production_Analysis.py
+            └── requirements.txt
+            ```
+            """
+        )
+        st.stop() # 이후 코드 실행 중단
+    except Exception as e:
+        st.error(f"데이터 로딩 중 알 수 없는 오류 발생: {type(e).__name__}: {e}")
+        st.stop()
 
-if data is not None:
-    # --- 2. 데이터 전처리 및 요약 (Data Preprocessing and Summary) ---
-    
-    # 2.1. 컬럼 이름 정리 및 날짜 포맷 변환
-    data.columns = ['Date', 'Production_Index']
-    data['Date'] = pd.to_datetime(data['Date'])
-    data = data.set_index('Date')
-    
-    st.header("🔍 데이터 탐색 및 요약")
-    
-    # 2.2. 데이터프레임 확인
-    st.subheader("데이터 미리보기")
-    st.dataframe(data.head())
+data = load_data() # 데이터 로드 함수 호출
 
-    # 2.3. 기본 정보 요약
-    st.subheader("기본 정보 (Null 값, 데이터 타입)")
-    buffer = pd.io.common.StringIO()
-    data.info(buf=buffer)
-    s = buffer.getvalue()
-    st.text(s)
-    
-    # 2.4. 통계 요약
-    st.subheader("통계 요약")
-    st.dataframe(data.describe().T)
+# --- 2. 데이터 전처리 및 요약 (Data Preprocessing and Summary) ---
+# 데이터 로드에 성공했을 경우만 이어서 진행
+data.columns = ['Date', 'Production_Index']
+data['Date'] = pd.to_datetime(data['Date'])
+data = data.set_index('Date')
 
-    # 2.5. 추가 분석: 계절성 및 연도별
-    
-    # 월별 평균 생산 지수
-    monthly_avg = data['Production_Index'].groupby(data.index.month).mean()
-    monthly_avg.index = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-    st.subheader("월별 평균 생산 지수 (계절성 확인)")
-    st.dataframe(monthly_avg.to_frame(name='Monthly_Avg_Index'))
-    st.info("여름철(6월~8월)에 생산량이 가장 높고 겨울철에 가장 낮은 뚜렷한 **계절성**이 나타납니다.")
+st.header("🔍 데이터 탐색 및 요약")
 
-    # --- 3. Plotly 시각화 (Plotly Visualization) ---
-    
-    st.header("📊 생산량 시계열 시각화")
+# 2.2. 데이터프레임 확인
+st.subheader("데이터 미리보기")
+st.dataframe(data.head())
 
-    # 3.1. 깔끔하고 인터랙티브한 시계열 선 그래프 (Line Chart)
-    # 시계열 데이터이므로 선 그래프가 적절하며, 단일 시리즈이므로 '무지개 색'을 적용하기 어렵습니다.
-    # 대신, Plotly의 기본 색상 테마를 사용하여 깔끔하고 인터랙티브한 그래프를 생성합니다.
-    
-    fig_line = px.line(
-        data.reset_index(), # Plotly를 위해 인덱스를 컬럼으로 변환
-        x='Date',
-        y='Production_Index',
-        title='냉동 디저트 월별 생산 지수 (1972-2019)',
-        labels={'Production_Index': '생산 지수 (IPN31152N)', 'Date': '날짜'},
-        template='plotly_white' # 깔끔한 템플릿 사용
-    )
+# 2.3. 기본 정보 요약
+st.subheader("기본 정보 (Null 값, 데이터 타입)")
+buffer = pd.io.common.StringIO()
+data.info(buf=buffer)
+s = buffer.getvalue()
+st.text(s)
 
-    # 인터랙티브 기능 추가 (드래그하여 확대/축소, 마우스 오버 정보)
-    fig_line.update_traces(line=dict(color='blue')) # 선 색상 지정
-    
-    st.plotly_chart(fig_line, use_container_width=True)
-    st.markdown(
-        """
-        - 그래프를 통해 시간이 지남에 따라 **전반적인 생산 지수**가 **증가**하는 **추세**와
-        - 매년 여름에 최고점을 찍고 겨울에 최저점을 찍는 **강력한 계절성**을 확인할 수 있습니다.
-        """
-    )
-    
-    # --- 4. 추가 시각화: 월별 평균 막대 그래프 (Seasonal Bar Chart) ---
-    
-    # 사용자 요청에 따라 계절성을 보여주는 막대 그래프를 Plotly로 추가합니다.
-    # '무지개 색' 느낌을 내기 위해 Plotly의 다양한 색상 스케일을 적용합니다.
-    st.header("🌈 월별 평균 생산 지수 막대 그래프")
-    
-    # 월별 평균을 Plotly로 시각화
-    fig_bar = px.bar(
-        monthly_avg.reset_index(),
-        x='index',
-        y='Monthly_Avg_Index',
-        title='월별 평균 생산 지수',
-        labels={'index': '월', 'Monthly_Avg_Index': '평균 생산 지수'},
-        color='Monthly_Avg_Index', # 막대 높이에 따라 색상 변화
-        color_continuous_scale=px.colors.sequential.Rainbow, # 무지개 느낌의 색상 스케일
-        template='plotly_white'
-    )
-    
-    # X축 레이블을 월 이름으로 명확하게 설정
-    fig_bar.update_xaxes(tickvals=monthly_avg.index.tolist(), ticktext=monthly_avg.index.tolist())
-    
-    st.plotly_chart(fig_bar, use_container_width=True)
-    st.markdown("월별 평균 생산량 막대 그래프에서 여름철(6월, 7월, 8월)에 생산량이 가장 높은 것을 명확하게 볼 수 있습니다.")
+# 2.4. 통계 요약
+st.subheader("통계 요약")
+st.dataframe(data.describe().T)
+
+# 2.5. 추가 분석: 계절성 및 연도별
+# 월별 평균 생산 지수
+monthly_avg = data['Production_Index'].groupby(data.index.month).mean()
+monthly_avg.index = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+st.subheader("월별 평균 생산 지수 (계절성 확인)")
+st.dataframe(monthly_avg.to_frame(name='Monthly_Avg_Index'))
+st.info("여름철(6월~8월)에 생산량이 가장 높고 겨울철에 가장 낮은 뚜렷한 **계절성**이 나타납니다.")
+
+# --- 3. Plotly 시각화 (Plotly Visualization) ---
+
+st.header("📊 생산량 시계열 시각화")
+
+# 3.1. 깔끔하고 인터랙티브한 시계열 선 그래프 (Line Chart)
+fig_line = px.line(
+    data.reset_index(),
+    x='Date',
+    y='Production_Index',
+    title='냉동 디저트 월별 생산 지수 (1972-2019)',
+    labels={'Production_Index': '생산 지수 (IPN31152N)', 'Date': '날짜'},
+    template='plotly_white'
+)
+fig_line.update_traces(line=dict(color='blue'))
+st.plotly_chart(fig_line, use_container_width=True)
+
+# --- 4. 추가 시각화: 월별 평균 막대 그래프 (Seasonal Bar Chart) ---
+
+st.header("🌈 월별 평균 생산 지수 막대 그래프")
+
+# 월별 평균을 Plotly로 시각화
+fig_bar = px.bar(
+    monthly_avg.reset_index(),
+    x='index',
+    y='Monthly_Avg_Index',
+    title='월별 평균 생산 지수',
+    labels={'index': '월', 'Monthly_Avg_Index': '평균 생산 지수'},
+    color='Monthly_Avg_Index',
+    color_continuous_scale=px.colors.sequential.Rainbow, # 무지개 느낌의 색상 스케일
+    template='plotly_white'
+)
+fig_bar.update_xaxes(tickvals=monthly_avg.index.tolist(), ticktext=monthly_avg.index.tolist())
+
+st.plotly_chart(fig_bar, use_container_width=True)
