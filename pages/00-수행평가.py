@@ -61,33 +61,59 @@ def load_data_final():
 
 data = load_data_final()
 
+# ----------------------------------------------------
+# 📌 기간 선택 기능 (슬라이더) 추가
+# ----------------------------------------------------
+
+min_year = data.index.year.min()
+max_year = data.index.year.max()
+
+st.sidebar.header("🗓️ 기간 선택 필터")
+start_year, end_year = st.sidebar.slider(
+    "분석 기간을 선택하세요:",
+    min_value=min_year,
+    max_value=max_year,
+    value=(min_year, max_year),
+    step=1
+)
+
+# 선택된 기간으로 데이터 필터링
+start_date = f'{start_year}-01-01'
+end_date = f'{end_year}-12-31'
+data_filtered = data.loc[start_date:end_date]
+
+st.info(f"선택된 분석 기간: **{start_year}년 1월 ~ {end_year}년 12월**")
+st.markdown("---")
+
+
 # --- 2. 데이터 전처리 및 요약 (Data Preprocessing and Summary) ---
+# **(필터링된 데이터를 사용하여 재계산 및 표시)**
 
 st.header("🔍 데이터 탐색 및 요약")
 st.markdown("---")
 
 # 2.2. 데이터프레임 확인
-st.subheader("데이터 미리보기")
-st.dataframe(data.head())
+st.subheader(f"데이터 미리보기 ({start_year}년 ~ {end_year}년)")
+st.dataframe(data_filtered.head())
 
 # 2.3. 기본 정보 요약
-st.subheader("기본 정보 (Null 값, 데이터 타입)")
+st.subheader("데이터 구조 (전체 기간)")
 buffer = pd.io.common.StringIO()
-data.info(buf=buffer)
+data_filtered.info(buf=buffer) # info는 전체 데이터셋의 구조를 보여주는 것이 일반적입니다.
 s = buffer.getvalue()
 st.text(s)
 
 # 2.4. 통계 요약
-st.subheader("통계 요약")
-st.dataframe(data.describe().T)
+st.subheader(f"통계 요약 ({start_year}년 ~ {end_year}년)")
+st.dataframe(data_filtered.describe().T)
 
 # 2.5. 추가 분석: 계절성 및 연도별
-# 월별 평균 생산 지수
-monthly_avg = data['Production_Index'].groupby(data.index.month).mean()
+# 월별 평균 생산 지수 (선택된 기간의 데이터로 재계산)
+monthly_avg = data_filtered['Production_Index'].groupby(data_filtered.index.month).mean()
 monthly_avg.index = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-st.subheader("월별 평균 생산 지수 (계절성 확인)")
+st.subheader(f"월별 평균 생산 지수 (선택 기간: {start_year}년 ~ {end_year}년)")
 st.dataframe(monthly_avg.to_frame(name='Monthly_Avg_Index'))
-st.info("여름철(6월~8월)에 생산량이 가장 높고 겨울철에 가장 낮은 뚜렷한 **계절성**이 나타납니다.")
+st.info("이 평균값은 선택된 기간의 계절성을 반영합니다. 기간에 따라 계절적 패턴이 미세하게 변화하는지 확인할 수 있습니다.")
 
 st.markdown("---")
 
@@ -97,10 +123,10 @@ st.header("📊 생산량 시계열 시각화")
 
 # 3.1. 깔끔하고 인터랙티브한 시계열 선 그래프 (Line Chart)
 fig_line = px.line(
-    data.reset_index(),
+    data_filtered.reset_index(), # 필터링된 데이터 사용
     x='Date',
     y='Production_Index',
-    title='냉동 디저트 월별 생산 지수 (1972-2019)',
+    title=f'냉동 디저트 월별 생산 지수 ({start_year}년 ~ {end_year}년)',
     labels={'Production_Index': '생산 지수 (IPN31152N)', 'Date': '날짜'},
     template='plotly_white'
 )
@@ -114,19 +140,19 @@ st.markdown("---")
 st.header("🌈 월별 평균 생산 지수 막대 그래프")
 
 # 4.1. 월별 평균 데이터를 Plotly에 맞게 정리
-# reset_index()를 하면 컬럼 이름이 'index'와 'Production_Index'가 됩니다.
+# (재계산된 monthly_avg 사용)
 monthly_avg_df = monthly_avg.reset_index()
-monthly_avg_df.columns = ['Month', 'Monthly_Avg_Index'] # 컬럼 이름을 명확하게 'Monthly_Avg_Index'로 변경
+monthly_avg_df.columns = ['Month', 'Monthly_Avg_Index'] 
 
 # 4.2. Plotly 막대 그래프 생성
 fig_bar = px.bar(
     monthly_avg_df, # 수정된 데이터프레임 사용
-    x='Month', # 수정된 컬럼 이름 사용
-    y='Monthly_Avg_Index', # 수정된 컬럼 이름 사용
-    title='월별 평균 생산 지수',
+    x='Month', 
+    y='Monthly_Avg_Index', 
+    title=f'월별 평균 생산 지수 ({start_year}년 ~ {end_year}년)',
     labels={'Month': '월', 'Monthly_Avg_Index': '평균 생산 지수'},
-    color='Monthly_Avg_Index', # 수정된 컬럼 이름 사용
-    color_continuous_scale=px.colors.sequential.Rainbow, # 무지개 느낌의 색상 스케일 적용
+    color='Monthly_Avg_Index', 
+    color_continuous_scale=px.colors.sequential.Rainbow, 
     template='plotly_white'
 )
 
