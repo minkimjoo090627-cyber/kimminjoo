@@ -16,36 +16,32 @@ st.title("🍦 냉동 디저트 생산량 분석 (1972-2019)")
 
 # --- 1. 데이터 로드 (Data Loading) - 파일 경로 및 인코딩 문제 해결 ---
 @st.cache_data
-def load_data():
+def load_data_final():
     file_name = 'Frozen_Dessert_Production.csv'
     
-    # 시도할 경로 목록: Streamlit Cloud의 루트와 pages 기준 상위 폴더
+    # 시도할 경로 목록
     possible_paths = [
-        file_name, # 1차 시도: 앱의 루트 폴더
+        file_name, # 1차 시도: 앱의 루트 폴더 (Streamlit Cloud 기본 경로)
         os.path.join(os.path.dirname(__file__), '..', file_name) # 2차 시도: pages 폴더 기준 상위 폴더
     ]
     
-    # 시도할 인코딩 목록: utf-8 (기본) -> cp949/euc-kr (윈도우 환경)
     encodings = ['utf-8', 'cp949', 'euc-kr']
 
     for path in possible_paths:
         for encoding in encodings:
             try:
-                # 지정된 경로와 인코딩으로 파일 읽기 시도
                 data = pd.read_csv(path, encoding=encoding)
                 st.success(f"✅ 파일이 성공적으로 로드되었습니다. (경로: {path}, 인코딩: {encoding})")
+                
+                # 데이터 전처리
+                data.columns = ['Date', 'Production_Index']
+                data['Date'] = pd.to_datetime(data['Date'])
+                data = data.set_index('Date')
                 return data
             except FileNotFoundError:
-                continue # 다음 경로 시도
-            except Exception as e:
-                # 인코딩 오류 등 다른 오류 발생 시, 다음 인코딩 시도
-                if 'codec' in str(e).lower():
-                    continue 
-                else:
-                    # 파일은 찾았으나 다른 문제 발생 (예: 파싱 오류)
-                    st.error(f"데이터 로딩 중 알 수 없는 오류 발생: {type(e).__name__}: {e}")
-                    st.error(f"시도 경로: {path}, 인코딩: {encoding}")
-                    st.stop()
+                continue 
+            except Exception:
+                continue
     
     # 모든 시도 실패 시
     st.error("⚠️ **데이터 파일(Frozen_Dessert_Production.csv)을 찾을 수 없습니다!**")
@@ -61,18 +57,11 @@ def load_data():
         ```
         """
     )
-    st.stop() # 이후 코드 실행 중단
+    st.stop()
 
-
-data = load_data() # 데이터 로드 함수 호출
+data = load_data_final()
 
 # --- 2. 데이터 전처리 및 요약 (Data Preprocessing and Summary) ---
-# 데이터 로드에 성공했을 경우만 이어서 진행
-
-# 'DATE'와 'IPN31152N' 컬럼 이름을 명확하게 지정
-data.columns = ['Date', 'Production_Index']
-data['Date'] = pd.to_datetime(data['Date'])
-data = data.set_index('Date')
 
 st.header("🔍 데이터 탐색 및 요약")
 st.markdown("---")
@@ -124,17 +113,24 @@ st.markdown("---")
 
 st.header("🌈 월별 평균 생산 지수 막대 그래프")
 
-# 월별 평균을 Plotly로 시각화
+# 4.1. 월별 평균 데이터를 Plotly에 맞게 정리
+# reset_index()를 하면 컬럼 이름이 'index'와 'Production_Index'가 됩니다.
+monthly_avg_df = monthly_avg.reset_index()
+monthly_avg_df.columns = ['Month', 'Monthly_Avg_Index'] # 컬럼 이름을 명확하게 'Monthly_Avg_Index'로 변경
+
+# 4.2. Plotly 막대 그래프 생성
 fig_bar = px.bar(
-    monthly_avg.reset_index(),
-    x='index',
-    y='Monthly_Avg_Index',
+    monthly_avg_df, # 수정된 데이터프레임 사용
+    x='Month', # 수정된 컬럼 이름 사용
+    y='Monthly_Avg_Index', # 수정된 컬럼 이름 사용
     title='월별 평균 생산 지수',
-    labels={'index': '월', 'Monthly_Avg_Index': '평균 생산 지수'},
-    color='Monthly_Avg_Index',
+    labels={'Month': '월', 'Monthly_Avg_Index': '평균 생산 지수'},
+    color='Monthly_Avg_Index', # 수정된 컬럼 이름 사용
     color_continuous_scale=px.colors.sequential.Rainbow, # 무지개 느낌의 색상 스케일 적용
     template='plotly_white'
 )
-fig_bar.update_xaxes(tickvals=monthly_avg.index.tolist(), ticktext=monthly_avg.index.tolist())
+
+# X축 레이블을 월 이름으로 명확하게 설정
+fig_bar.update_xaxes(tickvals=monthly_avg_df['Month'].tolist(), ticktext=monthly_avg_df['Month'].tolist())
 
 st.plotly_chart(fig_bar, use_container_width=True)
